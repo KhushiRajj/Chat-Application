@@ -1,0 +1,7 @@
+com\chat\client\ChatApplication.class
+com\chat\server\Server.class
+com\chat\client\ChatClient.class
+com\chat\server\ClientHandler.class
+com\chat\client\AudioClient.class
+com\chat\client\ChatApplication$1.class
+com\chat\client\Launcher.class
