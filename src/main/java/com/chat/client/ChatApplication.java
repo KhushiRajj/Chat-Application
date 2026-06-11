@@ -234,11 +234,32 @@ public class ChatApplication extends Application {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
         
+        // Microphone Selector in Top Bar
+        ComboBox<String> micBox = new ComboBox<>();
+        micBox.setPromptText("Select Microphone");
+        micBox.getItems().addAll(AudioClient.getAvailableMicrophones());
+        if (micBox.getItems().isEmpty()) {
+            micBox.getItems().add("No Mic Found");
+            micBox.setDisable(true);
+        } else {
+            micBox.getItems().add(0, "Default Mic");
+            micBox.setValue("Default Mic");
+        }
+        micBox.setOnAction(e -> {
+            String selected = micBox.getValue();
+            if ("Default Mic".equals(selected) || "No Mic Found".equals(selected)) {
+                audioClient.setMicrophone(null);
+            } else {
+                audioClient.setMicrophone(selected);
+            }
+        });
+        
         voiceCallBtn = new Button("Join Voice Channel");
         voiceCallBtn.getStyleClass().add("btn-primary");
         voiceCallBtn.setOnAction(e -> toggleVoiceCall());
         
-        topBar.getChildren().addAll(topBarTitle, spacer, voiceCallBtn);
+        topBar.getChildren().addAll(topBarTitle, spacer, micBox, voiceCallBtn);
+        topBar.setSpacing(10);
         centerArea.setTop(topBar);
 
         // Messages Area
@@ -535,12 +556,35 @@ public class ChatApplication extends Application {
         Stage settingsStage = new Stage();
         settingsStage.setTitle("Settings");
         
-        VBox root = new VBox(15);
-        root.setPadding(new Insets(20));
+        VBox root = new VBox(12); // Reduced from 15
+        root.setPadding(new Insets(15)); // Reduced from 20
         root.getStyleClass().add("login-bg");
         
         Label title = new Label("Application Settings");
         title.setStyle("-fx-font-size: 20px; -fx-text-fill: #0084FF; -fx-font-weight: bold;"); // Colored for visibility in both themes
+        
+        // Microphone
+        Label micLabel = new Label("Audio Input (Microphone):");
+        micLabel.getStyleClass().add("header-label");
+        ComboBox<String> micBox = new ComboBox<>();
+        micBox.setMaxWidth(Double.MAX_VALUE);
+        micBox.getItems().addAll(AudioClient.getAvailableMicrophones());
+        if (micBox.getItems().isEmpty()) {
+            micBox.getItems().add("No Microphone Found");
+            micBox.setDisable(true);
+        } else {
+            micBox.getItems().add(0, "Default");
+            micBox.setValue("Default");
+        }
+        micBox.setOnAction(e -> {
+            String selected = micBox.getValue();
+            if ("Default".equals(selected) || "No Microphone Found".equals(selected)) {
+                audioClient.setMicrophone(null);
+            } else {
+                audioClient.setMicrophone(selected);
+            }
+        });
+        VBox micSection = new VBox(5, micLabel, micBox);
         
         // Theme
         Label themeLabel = new Label("Theme:");
@@ -629,13 +673,13 @@ public class ChatApplication extends Application {
         VBox wallpaperSection = new VBox(8, wallpaperLabel, wpPresetsBox, wallpaperField);
         VBox avatarSection = new VBox(8, avatarLabel, presetsBox, avatarField);
         
-        root.getChildren().addAll(title, themeSection, wallpaperSection, avatarSection);
+        root.getChildren().addAll(title, micSection, themeSection, wallpaperSection, avatarSection);
         
         ScrollPane scrollPane = new ScrollPane(root);
         scrollPane.setFitToWidth(true);
         scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
         
-        Scene scene = new Scene(scrollPane, 450, 650);
+        Scene scene = new Scene(scrollPane, 420, 520); // Reduced width and height to remove empty whitespace
         try {
             scene.getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
         } catch (Exception e) {}

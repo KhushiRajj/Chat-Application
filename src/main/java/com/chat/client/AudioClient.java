@@ -13,6 +13,28 @@ public class AudioClient {
     
     // Audio Format: 16000 Hz, 16 bit, Mono, Signed, Little-Endian
     private AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, false);
+    
+    private String selectedMicrophoneName = null;
+
+    public void setMicrophone(String name) {
+        this.selectedMicrophoneName = name;
+    }
+
+    public static java.util.List<String> getAvailableMicrophones() {
+        java.util.List<String> mics = new java.util.ArrayList<>();
+        Mixer.Info[] mixerInfos = AudioSystem.getMixerInfo();
+        for (Mixer.Info info : mixerInfos) {
+            Mixer mixer = AudioSystem.getMixer(info);
+            Line.Info[] targetLines = mixer.getTargetLineInfo();
+            for (Line.Info lineInfo : targetLines) {
+                if (lineInfo.getLineClass().equals(TargetDataLine.class)) {
+                    mics.add(info.getName());
+                    break;
+                }
+            }
+        }
+        return mics;
+    }
 
     public AudioClient() {
         try {
@@ -33,7 +55,25 @@ public class AudioClient {
         try {
             // Setup Microphone with small buffer for low latency
             DataLine.Info micInfo = new DataLine.Info(TargetDataLine.class, format);
-            microphone = (TargetDataLine) AudioSystem.getLine(micInfo);
+            
+            if (selectedMicrophoneName != null) {
+                Mixer.Info selectedMixerInfo = null;
+                for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+                    if (info.getName().equals(selectedMicrophoneName)) {
+                        selectedMixerInfo = info;
+                        break;
+                    }
+                }
+                if (selectedMixerInfo != null) {
+                    Mixer mixer = AudioSystem.getMixer(selectedMixerInfo);
+                    microphone = (TargetDataLine) mixer.getLine(micInfo);
+                } else {
+                    microphone = (TargetDataLine) AudioSystem.getLine(micInfo);
+                }
+            } else {
+                microphone = (TargetDataLine) AudioSystem.getLine(micInfo);
+            }
+            
             microphone.open(format, 1024);
             microphone.start();
 
