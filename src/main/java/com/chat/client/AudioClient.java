@@ -26,7 +26,7 @@ public class AudioClient {
         return udpSocket != null ? udpSocket.getLocalPort() : -1;
     }
 
-    public void startCall(String serverIp) {
+    public void startCall(String serverIp, String username) {
         if (isCallActive) return;
         isCallActive = true;
 
@@ -78,6 +78,16 @@ public class AudioClient {
             playThread.setDaemon(true);
             captureThread.start();
             playThread.start();
+
+            // Send NAT hole-punch registration packet
+            try {
+                InetAddress serverAddress = InetAddress.getByName(serverIp);
+                byte[] regData = ("REG:" + username).getBytes();
+                DatagramPacket regPacket = new DatagramPacket(regData, regData.length, serverAddress, SERVER_PORT);
+                udpSocket.send(regPacket);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
 
             System.out.println("Audio call started.");
         } catch (LineUnavailableException e) {

@@ -97,6 +97,18 @@ public class Server {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 udpSocket.receive(packet);
 
+                String msg = new String(packet.getData(), 0, packet.getLength());
+                if (msg.startsWith("REG:")) {
+                    String username = msg.substring(4).trim();
+                    ClientHandler client = clients.get(username);
+                    if (client != null) {
+                        client.setIpAddress(packet.getAddress());
+                        client.setUdpPort(packet.getPort());
+                        System.out.println("Mapped NAT UDP port for " + username + " to " + packet.getPort());
+                    }
+                    continue; // Do not broadcast the registration packet
+                }
+
                 // For a peer-to-peer call, we need a way to know who this packet belongs to and who it goes to.
                 // In a simple group voice chat, we just broadcast it to everyone else.
                 // We'll extract the sender's IP/Port from the packet and send to others.

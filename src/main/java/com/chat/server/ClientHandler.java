@@ -34,6 +34,14 @@ public class ClientHandler implements Runnable {
         return udpPort;
     }
 
+    public void setUdpPort(int udpPort) {
+        this.udpPort = udpPort;
+    }
+
+    public void setIpAddress(InetAddress ipAddress) {
+        this.ipAddress = ipAddress;
+    }
+
     @Override
     public void run() {
         try {

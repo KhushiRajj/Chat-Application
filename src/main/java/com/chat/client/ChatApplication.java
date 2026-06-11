@@ -41,6 +41,11 @@ public class ChatApplication extends Application {
     private String currentActiveChat = "Global"; // "Global" or username
     private Map<String, List<HBox>> chatHistories = new HashMap<>();
     
+    // Customization Settings
+    private String currentTheme = "dark-theme.css";
+    private String currentWallpaper = "https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1"; // Pexels Abstract Dark
+    private String currentAvatarUrl = "https://cdn-icons-png.flaticon.com/512/4140/4140048.png";
+    
     public static void main(String[] args) {
         launch(args);
     }
@@ -145,9 +150,9 @@ public class ChatApplication extends Application {
         
         Scene scene = new Scene(root, 800, 600);
         try {
-            scene.getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+            scene.getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
         } catch (Exception e) {
-            System.err.println("Could not load style.css");
+            System.err.println("Could not load " + currentTheme);
         }
         
         primaryStage.setTitle("Login");
@@ -201,6 +206,17 @@ public class ChatApplication extends Application {
         });
 
         leftSidebar.getChildren().addAll(channelsHeader, channelList, dmHeader, dmList);
+        
+        Region sidebarSpacer = new Region();
+        VBox.setVgrow(sidebarSpacer, Priority.ALWAYS);
+        
+        Button settingsBtn = new Button("⚙ Settings");
+        settingsBtn.getStyleClass().add("btn-primary");
+        settingsBtn.setMaxWidth(Double.MAX_VALUE);
+        settingsBtn.setOnAction(e -> showSettingsDialog());
+        leftSidebar.getChildren().addAll(sidebarSpacer, settingsBtn);
+        leftSidebar.setPadding(new Insets(0, 0, 15, 0));
+        
         mainRoot.setLeft(leftSidebar);
 
         // --- CENTER AREA (Chat) ---
@@ -285,10 +301,31 @@ public class ChatApplication extends Application {
                     Circle statusDot = new Circle(5);
                     statusDot.setStyle("-fx-fill: #43b581;"); // Discord Online Green
                     
+                    String avatarUrl = item.equals(currentUsername) ? currentAvatarUrl : "https://api.dicebear.com/7.x/initials/png?seed=" + item + "&backgroundColor=1a1b1e";
+                    javafx.scene.image.ImageView avatar = new javafx.scene.image.ImageView(new javafx.scene.image.Image(avatarUrl, 24, 24, true, true));
+                    Circle clip = new Circle(12, 12, 12);
+                    avatar.setClip(clip);
+                    
                     Label nameLabel = new Label(item);
                     nameLabel.setStyle("-fx-text-fill: #EFEFEF; -fx-font-size: 14px;");
                     
-                    box.getChildren().addAll(statusDot, nameLabel);
+                    Region spacer = new Region();
+                    HBox.setHgrow(spacer, Priority.ALWAYS);
+                    
+                    Button dmBtn = new Button("DM");
+                    dmBtn.getStyleClass().add("dm-btn");
+                    dmBtn.setOnAction(e -> {
+                        if (!item.equals(currentUsername)) {
+                            openDirectMessage(item);
+                        }
+                    });
+                    
+                    if (item.equals(currentUsername)) {
+                        box.getChildren().addAll(statusDot, avatar, nameLabel);
+                    } else {
+                        box.getChildren().addAll(statusDot, avatar, nameLabel, spacer, dmBtn);
+                    }
+                    
                     setGraphic(box);
                 }
             }
@@ -310,10 +347,12 @@ public class ChatApplication extends Application {
         // Load scene
         Scene scene = new Scene(mainRoot, 1000, 700);
         try {
-            scene.getStylesheets().add(getClass().getResource("/css/style.css").toExternalForm());
+            scene.getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
         } catch (Exception e) {
-            System.err.println("Could not load style.css");
+            System.err.println("Could not load " + currentTheme);
         }
+        
+        applyWallpaper();
         
         primaryStage.setTitle("Discord-like Chat Application");
         primaryStage.setScene(scene);
@@ -379,18 +418,33 @@ public class ChatApplication extends Application {
         
         bubble.getChildren().addAll(senderLabel, textLabel);
         
-        HBox container = new HBox();
+        HBox container = new HBox(10);
         container.setPadding(new Insets(5, 20, 5, 20));
         
+        javafx.scene.image.ImageView avatar = null;
+        if (!sender.equals("[SERVER]")) {
+            String avatarUrl = sender.equals(currentUsername) ? currentAvatarUrl : "https://api.dicebear.com/7.x/initials/png?seed=" + sender + "&backgroundColor=2f3136";
+            try {
+                avatar = new javafx.scene.image.ImageView(new javafx.scene.image.Image(avatarUrl, 32, 32, true, true));
+            } catch (Exception e) {
+                avatar = new javafx.scene.image.ImageView(new javafx.scene.image.Image("https://api.dicebear.com/7.x/initials/png?seed=" + sender + "&backgroundColor=2f3136", 32, 32, true, true));
+            }
+            Circle clip = new Circle(16, 16, 16);
+            avatar.setClip(clip);
+        }
+
         if (sender.equals(currentUsername)) {
             bubble.getStyleClass().add("message-bubble-self");
             container.setAlignment(Pos.CENTER_RIGHT);
+            if (avatar != null) container.getChildren().addAll(bubble, avatar);
+            else container.getChildren().add(bubble);
         } else {
             bubble.getStyleClass().add("message-bubble-other");
             container.setAlignment(Pos.CENTER_LEFT);
+            if (avatar != null) container.getChildren().addAll(avatar, bubble);
+            else container.getChildren().add(bubble);
         }
         
-        container.getChildren().add(bubble);
         return container;
     }
 
@@ -465,7 +519,7 @@ public class ChatApplication extends Application {
 
     private void toggleVoiceCall() {
         if (voiceCallBtn.getText().equals("Join Voice Channel")) {
-            audioClient.startCall(serverIp);
+            audioClient.startCall(serverIp, currentUsername);
             voiceCallBtn.setText("Disconnect");
             voiceCallBtn.getStyleClass().remove("btn-primary");
             voiceCallBtn.getStyleClass().add("btn-danger");
@@ -474,6 +528,140 @@ public class ChatApplication extends Application {
             voiceCallBtn.setText("Join Voice Channel");
             voiceCallBtn.getStyleClass().remove("btn-danger");
             voiceCallBtn.getStyleClass().add("btn-primary");
+        }
+    }
+
+    private void showSettingsDialog() {
+        Stage settingsStage = new Stage();
+        settingsStage.setTitle("Settings");
+        
+        VBox root = new VBox(15);
+        root.setPadding(new Insets(20));
+        root.getStyleClass().add("login-bg");
+        
+        Label title = new Label("Application Settings");
+        title.setStyle("-fx-font-size: 20px; -fx-text-fill: #0084FF; -fx-font-weight: bold;"); // Colored for visibility in both themes
+        
+        // Theme
+        Label themeLabel = new Label("Theme:");
+        themeLabel.getStyleClass().add("header-label");
+        ComboBox<String> themeBox = new ComboBox<>();
+        themeBox.getItems().addAll("Dark", "Light", "Ocean");
+        themeBox.setValue(currentTheme.replace("-theme.css", "").substring(0, 1).toUpperCase() + currentTheme.replace("-theme.css", "").substring(1));
+        themeBox.setOnAction(e -> {
+            currentTheme = themeBox.getValue().toLowerCase() + "-theme.css";
+            applyTheme();
+            // Re-apply to settings stage as well
+            if (settingsStage.getScene() != null) {
+                settingsStage.getScene().getStylesheets().clear();
+                try {
+                    settingsStage.getScene().getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
+                } catch (Exception ex) {}
+            }
+        });
+        
+        // Wallpaper
+        Label wallpaperLabel = new Label("Wallpaper URL (leave blank for none):");
+        wallpaperLabel.getStyleClass().add("header-label");
+        TextField wallpaperField = new TextField(currentWallpaper);
+        wallpaperField.getStyleClass().add("chat-text-field");
+        wallpaperField.textProperty().addListener((obs, oldVal, newVal) -> {
+            currentWallpaper = newVal.trim();
+            applyWallpaper();
+        });
+        
+        // Quick Pexels Wallpaper presets
+        HBox wpPresetsBox = new HBox(10);
+        String[] wpPresets = {
+            "https://images.pexels.com/photos/1103970/pexels-photo-1103970.jpeg?auto=compress&cs=tinysrgb&w=100", // abstract
+            "https://images.pexels.com/photos/1307698/pexels-photo-1307698.jpeg?auto=compress&cs=tinysrgb&w=100", // stars
+            "https://images.pexels.com/photos/255379/pexels-photo-255379.jpeg?auto=compress&cs=tinysrgb&w=100", // ocean
+            "https://images.pexels.com/photos/1311590/pexels-photo-1311590.jpeg?auto=compress&cs=tinysrgb&w=100"  // neon
+        };
+        for (String url : wpPresets) {
+            try {
+                javafx.scene.image.ImageView img = new javafx.scene.image.ImageView(new javafx.scene.image.Image(url, 40, 25, true, true));
+                Button btn = new Button();
+                btn.setGraphic(img);
+                btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand; -fx-padding: 0;");
+                btn.setOnAction(e -> {
+                    // Remove the width restriction when setting the actual wallpaper
+                    String fullResUrl = url.replace("&w=100", "&w=1260&h=750&dpr=1");
+                    wallpaperField.setText(fullResUrl);
+                });
+                wpPresetsBox.getChildren().add(btn);
+            } catch (Exception e) {}
+        }
+        
+        // Avatar
+        Label avatarLabel = new Label("Avatar URL (Flaticon image URL):");
+        avatarLabel.getStyleClass().add("header-label");
+        TextField avatarField = new TextField(currentAvatarUrl);
+        avatarField.getStyleClass().add("chat-text-field");
+        avatarField.textProperty().addListener((obs, oldVal, newVal) -> {
+            currentAvatarUrl = newVal.trim();
+            renderChat(currentActiveChat);
+            if (userList != null) userList.refresh();
+        });
+        
+        // Quick Flaticon presets
+        HBox presetsBox = new HBox(10);
+        String[] presets = {
+            "https://cdn-icons-png.flaticon.com/512/4140/4140048.png", // boy
+            "https://cdn-icons-png.flaticon.com/512/4140/4140047.png", // girl
+            "https://cdn-icons-png.flaticon.com/512/4333/4333609.png", // hacker
+            "https://cdn-icons-png.flaticon.com/512/2202/2202112.png"  // bot
+        };
+        for (String url : presets) {
+            try {
+                javafx.scene.image.ImageView img = new javafx.scene.image.ImageView(new javafx.scene.image.Image(url, 32, 32, true, true));
+                Button btn = new Button();
+                btn.setGraphic(img);
+                btn.setStyle("-fx-background-color: transparent; -fx-cursor: hand;");
+                btn.setOnAction(e -> {
+                    avatarField.setText(url);
+                });
+                presetsBox.getChildren().add(btn);
+            } catch (Exception e) {}
+        }
+        
+        VBox themeSection = new VBox(8, themeLabel, themeBox);
+        VBox wallpaperSection = new VBox(8, wallpaperLabel, wpPresetsBox, wallpaperField);
+        VBox avatarSection = new VBox(8, avatarLabel, presetsBox, avatarField);
+        
+        root.getChildren().addAll(title, themeSection, wallpaperSection, avatarSection);
+        
+        ScrollPane scrollPane = new ScrollPane(root);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background-color: transparent; -fx-background: transparent;");
+        
+        Scene scene = new Scene(scrollPane, 450, 650);
+        try {
+            scene.getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
+        } catch (Exception e) {}
+        
+        settingsStage.setScene(scene);
+        settingsStage.show();
+    }
+
+    private void applyTheme() {
+        if (primaryStage != null && primaryStage.getScene() != null) {
+            primaryStage.getScene().getStylesheets().clear();
+            try {
+                primaryStage.getScene().getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
+            } catch (Exception e) {
+                System.err.println("Could not load " + currentTheme);
+            }
+        }
+    }
+
+    private void applyWallpaper() {
+        if (chatScrollPane != null) {
+            if (currentWallpaper != null && !currentWallpaper.isEmpty()) {
+                chatScrollPane.setStyle("-fx-background-image: url('" + currentWallpaper + "'); -fx-background-repeat: repeat; -fx-background-size: cover;");
+            } else {
+                chatScrollPane.setStyle("");
+            }
         }
     }
 }
