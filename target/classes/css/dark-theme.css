@@ -180,3 +180,53 @@
     -fx-border-color: #272A30;
     -fx-border-radius: 16;
 }
+
+/* Premium media message styling */
+.media-image {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;
+}
+.media-image:hover {
+    -fx-effect: dropshadow(three-pass-box, rgba(0, 132, 255, 0.3), 8, 0, 0, 0);
+}
+
+.media-video-placeholder {
+    -fx-background-color: #1A1D21;
+    -fx-background-radius: 8;
+    -fx-border-color: #272A30;
+    -fx-border-width: 1;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;
+}
+.media-video-placeholder:hover {
+    -fx-background-color: #272A30;
+    -fx-border-color: #0084FF;
+}
+
+.media-audio-player {
+    -fx-background-color: #1A1D21;
+    -fx-background-radius: 16;
+    -fx-border-color: #272A30;
+    -fx-border-width: 1;
+    -fx-border-radius: 16;
+}
+
+/* ScrollBar customizations */
+.chat-scroll-pane .scroll-bar:vertical {
+    -fx-background-color: transparent;
+    -fx-pref-width: 8px;
+}
+.chat-scroll-pane .scroll-bar:vertical .thumb {
+    -fx-background-color: #272A30;
+    -fx-background-radius: 4px;
+}
+.chat-scroll-pane .scroll-bar:vertical .thumb:hover {
+    -fx-background-color: #0084FF;
+}
+
+/* Lightbox close button hover */
+.lightbox-close-btn:hover {
+    -fx-background-color: rgba(255, 255, 255, 0.4) !important;
+}
+

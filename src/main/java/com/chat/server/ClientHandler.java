@@ -15,8 +15,8 @@ public class ClientHandler implements Runnable {
         this.socket = socket;
         this.ipAddress = socket.getInetAddress();
         try {
-            this.input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            this.output = new PrintWriter(socket.getOutputStream(), true);
+            this.input = new BufferedReader(new InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            this.output = new PrintWriter(new java.io.OutputStreamWriter(socket.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8), true);
         } catch (IOException e) {
             System.out.println("Error initializing streams: " + e.getMessage());
         }

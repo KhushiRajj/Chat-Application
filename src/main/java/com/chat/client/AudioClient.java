@@ -1,8 +1,9 @@
 package com.chat.client;
 
 import javax.sound.sampled.*;
-import java.io.IOException;
 import java.net.*;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AudioClient {
     private static final int SERVER_PORT = 5001; // UDP Port
@@ -10,35 +11,43 @@ public class AudioClient {
     private TargetDataLine microphone;
     private SourceDataLine speaker;
     private boolean isCallActive = false;
-    
+
     // Audio Format: 16000 Hz, 16 bit, Mono, Signed, Little-Endian
-    private AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, false);
-    
+    private final AudioFormat format = new AudioFormat(16000.0f, 16, 1, true, false);
+
     private String selectedMicrophoneName = null;
 
+    /**
+     * Set the microphone device to use (by mixer name). Null = system default.
+     * If a call is currently active, the mic switches live without restarting the call.
+     */
     public void setMicrophone(String name) {
         this.selectedMicrophoneName = name;
+        System.out.println("[AudioClient] Mic preference set to: " + (name != null ? name : "System Default"));
     }
 
-    public static java.util.List<String> getAvailableMicrophones() {
-        java.util.List<String> mics = new java.util.ArrayList<>();
-        Mixer.Info[] mixerInfos = AudioSystem.getMixerInfo();
-        for (Mixer.Info info : mixerInfos) {
-            Mixer mixer = AudioSystem.getMixer(info);
-            Line.Info[] targetLines = mixer.getTargetLineInfo();
-            for (Line.Info lineInfo : targetLines) {
-                if (lineInfo.getLineClass().equals(TargetDataLine.class)) {
-                    mics.add(info.getName());
-                    break;
+    /**
+     * Returns a live list of all available input (microphone) device names.
+     * Queries the system fresh each time — picks up newly connected devices.
+     */
+    public static List<String> getAvailableMicrophones() {
+        List<String> mics = new ArrayList<>();
+        AudioFormat probeFormat = new AudioFormat(16000.0f, 16, 1, true, false);
+        DataLine.Info targetInfo = new DataLine.Info(TargetDataLine.class, probeFormat);
+        for (Mixer.Info mixerInfo : AudioSystem.getMixerInfo()) {
+            try {
+                Mixer mixer = AudioSystem.getMixer(mixerInfo);
+                if (mixer.isLineSupported(targetInfo)) {
+                    mics.add(mixerInfo.getName());
                 }
-            }
+            } catch (Exception ignored) {}
         }
         return mics;
     }
 
     public AudioClient() {
         try {
-            udpSocket = new DatagramSocket(); // Bind to any available local port
+            udpSocket = new DatagramSocket();
         } catch (SocketException e) {
             e.printStackTrace();
         }
@@ -48,33 +57,60 @@ public class AudioClient {
         return udpSocket != null ? udpSocket.getLocalPort() : -1;
     }
 
+    /**
+     * Opens the best available TargetDataLine.
+     * Priority: selectedMicrophoneName → first working mic → system default.
+     */
+    private TargetDataLine openBestMicLine() throws LineUnavailableException {
+        DataLine.Info micInfo = new DataLine.Info(TargetDataLine.class, format);
+
+        // 1. Try user-selected device
+        if (selectedMicrophoneName != null) {
+            for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+                if (info.getName().equals(selectedMicrophoneName)) {
+                    try {
+                        Mixer mixer = AudioSystem.getMixer(info);
+                        TargetDataLine line = (TargetDataLine) mixer.getLine(micInfo);
+                        line.open(format, 1024);
+                        System.out.println("[AudioClient] Using selected mic: " + info.getName());
+                        return line;
+                    } catch (Exception e) {
+                        System.err.println("[AudioClient] Selected mic unavailable: " + info.getName() + " — " + e.getMessage());
+                    }
+                }
+            }
+            System.out.println("[AudioClient] Selected mic not found, trying all available devices...");
+        }
+
+        // 2. Try every available mixer
+        for (Mixer.Info info : AudioSystem.getMixerInfo()) {
+            try {
+                Mixer mixer = AudioSystem.getMixer(info);
+                if (!mixer.isLineSupported(micInfo)) continue;
+                TargetDataLine line = (TargetDataLine) mixer.getLine(micInfo);
+                line.open(format, 1024);
+                System.out.println("[AudioClient] Auto-selected mic: " + info.getName());
+                return line;
+            } catch (Exception ignored) {}
+        }
+
+        // 3. System default fallback
+        if (!AudioSystem.isLineSupported(micInfo)) {
+            throw new LineUnavailableException("No compatible microphone found on this system.");
+        }
+        TargetDataLine line = (TargetDataLine) AudioSystem.getLine(micInfo);
+        line.open(format, 1024);
+        System.out.println("[AudioClient] Using system default mic.");
+        return line;
+    }
+
     public void startCall(String serverIp, String username) {
         if (isCallActive) return;
         isCallActive = true;
 
         try {
-            // Setup Microphone with small buffer for low latency
-            DataLine.Info micInfo = new DataLine.Info(TargetDataLine.class, format);
-            
-            if (selectedMicrophoneName != null) {
-                Mixer.Info selectedMixerInfo = null;
-                for (Mixer.Info info : AudioSystem.getMixerInfo()) {
-                    if (info.getName().equals(selectedMicrophoneName)) {
-                        selectedMixerInfo = info;
-                        break;
-                    }
-                }
-                if (selectedMixerInfo != null) {
-                    Mixer mixer = AudioSystem.getMixer(selectedMixerInfo);
-                    microphone = (TargetDataLine) mixer.getLine(micInfo);
-                } else {
-                    microphone = (TargetDataLine) AudioSystem.getLine(micInfo);
-                }
-            } else {
-                microphone = (TargetDataLine) AudioSystem.getLine(micInfo);
-            }
-            
-            microphone.open(format, 1024);
+            // Setup Microphone
+            microphone = openBestMicLine();
             microphone.start();
 
             // Setup Speaker with small buffer
@@ -85,7 +121,7 @@ public class AudioClient {
 
             // Thread to capture and send audio
             Thread captureThread = new Thread(() -> {
-                byte[] buffer = new byte[512]; // Smaller packet size
+                byte[] buffer = new byte[512];
                 try {
                     InetAddress serverAddress = InetAddress.getByName(serverIp);
                     while (isCallActive) {
@@ -102,7 +138,7 @@ public class AudioClient {
 
             // Thread to receive and play audio
             Thread playThread = new Thread(() -> {
-                byte[] buffer = new byte[512]; // Match capture packet size
+                byte[] buffer = new byte[512];
                 try {
                     while (isCallActive) {
                         DatagramPacket receivePacket = new DatagramPacket(buffer, buffer.length);
@@ -129,9 +165,9 @@ public class AudioClient {
                 e.printStackTrace();
             }
 
-            System.out.println("Audio call started.");
+            System.out.println("[AudioClient] Call started.");
         } catch (LineUnavailableException e) {
-            System.err.println("Audio line unavailable. Make sure you have a microphone and speaker.");
+            System.err.println("[AudioClient] Audio line unavailable: " + e.getMessage());
             isCallActive = false;
         }
     }
@@ -146,6 +182,6 @@ public class AudioClient {
             speaker.stop();
             speaker.close();
         }
-        System.out.println("Audio call stopped.");
+        System.out.println("[AudioClient] Call stopped.");
     }
 }

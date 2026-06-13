@@ -26,8 +26,8 @@ public class ChatClient {
     public boolean connect(String serverIp, String username, int audioPort) {
         try {
             socket = new Socket(serverIp, SERVER_PORT);
-            input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-            output = new PrintWriter(socket.getOutputStream(), true);
+            input = new BufferedReader(new InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+            output = new PrintWriter(new java.io.OutputStreamWriter(socket.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8), true);
             isConnected = true;
 
             // Wait for "Enter your username:"
