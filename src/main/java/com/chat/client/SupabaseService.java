@@ -18,9 +18,20 @@ import java.util.*;
 public class SupabaseService {
     private static String supabaseUrl;
     private static String supabaseKey;
+    private static String resendApiKey;
+    private static String resendFromEmail;
+    private static String gmailUsername;
+    private static String gmailPassword;
+    private static String serverMode;
+    private static String serverLocalIp;
+    private static String serverHostedIp;
     private static boolean isConfigured = false;
     private static final HttpClient client = HttpClient.newHttpClient();
     private static final Gson gson = new Gson();
+
+    private static String currentOtp;
+    private static String otpEmail;
+    private static String lastResendError;
 
     static {
         loadConfig();
@@ -36,20 +47,6 @@ public class SupabaseService {
         if (configFile != null && configFile.exists()) {
             try (FileInputStream in = new FileInputStream(configFile)) {
                 props.load(in);
-                supabaseUrl = props.getProperty("supabase.url");
-                supabaseKey = props.getProperty("supabase.key");
-
-                if (supabaseUrl != null && !supabaseUrl.isEmpty() && !supabaseUrl.contains("your-project-id") &&
-                    supabaseKey != null && !supabaseKey.isEmpty() && !supabaseKey.contains("your-anon-or-service-role-key")) {
-                    isConfigured = true;
-                    // Strip trailing slashes
-                    if (supabaseUrl.endsWith("/")) {
-                        supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length() - 1);
-                    }
-                    System.out.println("[Supabase] Configured successfully. URL: " + supabaseUrl + " (from: " + configFile.getAbsolutePath() + ")");
-                } else {
-                    System.err.println("[Supabase] Config found but contains placeholder values. Storage/DB will be disabled.");
-                }
             } catch (IOException e) {
                 System.err.println("[Supabase] Failed to read supabase.properties: " + e.getMessage());
             }
@@ -58,14 +55,6 @@ public class SupabaseService {
             try (java.io.InputStream is = SupabaseService.class.getResourceAsStream("/supabase.properties")) {
                 if (is != null) {
                     props.load(is);
-                    supabaseUrl = props.getProperty("supabase.url");
-                    supabaseKey = props.getProperty("supabase.key");
-                    if (supabaseUrl != null && !supabaseUrl.isEmpty() && !supabaseUrl.contains("your-project-id") &&
-                        supabaseKey != null && !supabaseKey.isEmpty() && !supabaseKey.contains("your-anon-or-service-role-key")) {
-                        isConfigured = true;
-                        if (supabaseUrl.endsWith("/")) supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length() - 1);
-                        System.out.println("[Supabase] Configured from classpath resource. URL: " + supabaseUrl);
-                    }
                 } else {
                     System.err.println("[Supabase] No supabase.properties found in any location. Storage/DB will be disabled.");
                 }
@@ -73,6 +62,194 @@ public class SupabaseService {
                 System.err.println("[Supabase] Could not load classpath supabase.properties: " + e.getMessage());
             }
         }
+
+        supabaseUrl = props.getProperty("supabase.url");
+        supabaseKey = props.getProperty("supabase.key");
+        resendApiKey = props.getProperty("resend.api.key");
+        resendFromEmail = props.getProperty("resend.from.email");
+        gmailUsername = props.getProperty("gmail.username");
+        gmailPassword = props.getProperty("gmail.password");
+        serverMode = props.getProperty("server.mode", "local");
+        serverLocalIp = props.getProperty("server.local.ip", "localhost");
+        serverHostedIp = props.getProperty("server.hosted.ip", "localhost");
+
+        if (supabaseUrl != null && !supabaseUrl.isEmpty() && !supabaseUrl.contains("your-project-id") &&
+            supabaseKey != null && !supabaseKey.isEmpty() && !supabaseKey.contains("your-anon-or-service-role-key")) {
+            isConfigured = true;
+            // Strip trailing slashes
+            if (supabaseUrl.endsWith("/")) {
+                supabaseUrl = supabaseUrl.substring(0, supabaseUrl.length() - 1);
+            }
+            System.out.println("[Supabase] Configured successfully. URL: " + supabaseUrl);
+        } else {
+            System.err.println("[Supabase] Config found but contains placeholder values. Storage/DB will be disabled.");
+        }
+    }
+
+    public static String getResendApiKey() {
+        return resendApiKey;
+    }
+
+    public static String getResendFromEmail() {
+        return resendFromEmail;
+    }
+
+    public static String getServerMode() {
+        return serverMode;
+    }
+
+    public static String getLocalServerIp() {
+        return serverLocalIp;
+    }
+
+    public static String getHostedServerIp() {
+        return serverHostedIp;
+    }
+
+    public static String getServerIp() {
+        if ("hosted".equalsIgnoreCase(serverMode)) {
+            return serverHostedIp;
+        }
+        return serverLocalIp;
+    }
+
+    public static String getLastResendError() {
+        return lastResendError;
+    }
+
+    /**
+     * Sends an email via the Resend API.
+     */
+    public static boolean sendEmail(String toEmail, String subject, String htmlBody) {
+        if (resendApiKey == null || resendApiKey.isEmpty() || resendApiKey.contains("your-resend-api-key")) {
+            lastResendError = "Resend API key is not configured in supabase.properties.";
+            System.err.println("[Resend] API key is not configured.");
+            return false;
+        }
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            String fromEmail = resendFromEmail != null && !resendFromEmail.isEmpty() ? resendFromEmail : "onboarding@resend.dev";
+            if (!fromEmail.contains("<")) {
+                fromEmail = "ChatApp <" + fromEmail + ">";
+            }
+            payload.put("from", fromEmail);
+            payload.put("to", Collections.singletonList(toEmail));
+            payload.put("subject", subject);
+            payload.put("html", htmlBody);
+
+            String jsonPayload = gson.toJson(payload);
+            String url = "https://api.resend.com/emails";
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .header("Authorization", "Bearer " + resendApiKey)
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
+                    .build();
+
+            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            System.out.println("[Resend] Response [" + response.statusCode() + "]: " + response.body());
+
+            if (response.statusCode() == 200 || response.statusCode() == 201) {
+                lastResendError = null;
+                return true;
+            } else {
+                lastResendError = "Status " + response.statusCode() + ": " + response.body();
+                return false;
+            }
+        } catch (Exception e) {
+            System.err.println("[Resend] Failed to send email: " + e.getMessage());
+            lastResendError = e.getMessage();
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Sends an email via Gmail SMTP (using javax.mail).
+     */
+    public static boolean sendEmailViaGmail(String toEmail, String subject, String htmlBody) {
+        if (gmailUsername == null || gmailUsername.isEmpty() || gmailPassword == null || gmailPassword.isEmpty()) {
+            lastResendError = "Gmail credentials are not configured in supabase.properties.";
+            System.err.println("[Gmail] Username or Password not configured.");
+            return false;
+        }
+
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", "smtp.gmail.com");
+        props.put("mail.smtp.port", "587");
+        props.put("mail.smtp.ssl.protocols", "TLSv1.2");
+
+        javax.mail.Session session = javax.mail.Session.getInstance(props, new javax.mail.Authenticator() {
+            @Override
+            protected javax.mail.PasswordAuthentication getPasswordAuthentication() {
+                return new javax.mail.PasswordAuthentication(gmailUsername, gmailPassword);
+            }
+        });
+
+        try {
+            javax.mail.Message message = new javax.mail.internet.MimeMessage(session);
+            message.setFrom(new javax.mail.internet.InternetAddress(gmailUsername));
+            message.setRecipients(
+                    javax.mail.Message.RecipientType.TO,
+                    javax.mail.internet.InternetAddress.parse(toEmail)
+            );
+            message.setSubject(subject);
+
+            // Send HTML body
+            message.setContent(htmlBody, "text/html; charset=utf-8");
+
+            javax.mail.Transport.send(message);
+            System.out.println("[Gmail] Email sent successfully to: " + toEmail);
+            lastResendError = null;
+            return true;
+        } catch (Exception e) {
+            System.err.println("[Gmail] Failed to send email: " + e.getMessage());
+            lastResendError = e.getMessage();
+            e.printStackTrace();
+            return false;
+        }
+    }
+
+    /**
+     * Generates a 6-digit OTP and sends it via Resend or Gmail.
+     */
+    public static boolean sendOtpViaResend(String email) {
+        Random random = new Random();
+        int otpVal = 100000 + random.nextInt(900000); // Generates a number between 100000 and 999999
+        currentOtp = String.valueOf(otpVal);
+        otpEmail = email;
+
+        String subject = "Verify Your Chat Account";
+        String htmlBody = "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e1e8ed; border-radius: 8px;'>"
+                + "<h2 style='color: #0084FF; text-align: center;'>Chat Application Verification Code</h2>"
+                + "<p>Hello,</p>"
+                + "<p>Thank you for registering. Please use the following 6-digit verification code to complete your registration:</p>"
+                + "<div style='font-size: 28px; font-weight: bold; letter-spacing: 4px; text-align: center; margin: 25px 0; padding: 15px; background-color: #f5f8fa; color: #1c1f23; border-radius: 6px; border: 1px dashed #0084FF;'>"
+                + currentOtp + "</div>"
+                + "<p style='font-size: 12px; color: #657786; text-align: center;'>If you did not request this code, you can safely ignore this email.</p>"
+                + "</div>";
+
+        System.out.println("[Email] Generated OTP code: " + currentOtp + " for email: " + email);
+        
+        // Use Gmail SMTP if configured, else fall back to Resend API
+        if (gmailUsername != null && !gmailUsername.isEmpty() && gmailPassword != null && !gmailPassword.isEmpty()) {
+            return sendEmailViaGmail(email, subject, htmlBody);
+        } else {
+            return sendEmail(email, subject, htmlBody);
+        }
+    }
+
+    /**
+     * Verifies the provided OTP code.
+     */
+    public static boolean verifyOtp(String email, String code) {
+        if (currentOtp == null || otpEmail == null || code == null) {
+            return false;
+        }
+        return email.equalsIgnoreCase(otpEmail) && code.trim().equals(currentOtp);
     }
 
     /**
@@ -355,6 +532,12 @@ public class SupabaseService {
             Map<String, Object> data = new HashMap<>();
             data.put("username", username);
             options.put("data", data);
+
+            String redirectIp = getServerIp();
+            if (redirectIp != null && !redirectIp.isEmpty()) {
+                options.put("emailRedirectTo", "http://" + redirectIp + ":5000/");
+            }
+
             payload.put("options", options);
 
             String jsonPayload = gson.toJson(payload);

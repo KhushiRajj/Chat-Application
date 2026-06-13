@@ -99,9 +99,9 @@ public class ChatApplication extends Application {
         card.setAlignment(Pos.CENTER);
 
         // Header Labels
-        Label title = new Label("Welcome Back!");
+        Label title = new Label("Join Chat");
         title.setStyle("-fx-font-size: 24px; -fx-text-fill: white; -fx-font-weight: bold;");
-        Label subtitle = new Label("We're so excited to see you again!");
+        Label subtitle = new Label("Enter server details, email, and username");
         subtitle.setStyle("-fx-text-fill: #b9bbbe; -fx-font-size: 14px; -fx-padding: 0 0 10 0;");
 
         VBox fieldsBox = new VBox(10);
@@ -109,7 +109,11 @@ public class ChatApplication extends Application {
         Label ipLabel = new Label("SERVER IP");
         ipLabel.getStyleClass().add("header-label");
         ipLabel.setPadding(new Insets(0));
-        TextField serverIpField = new TextField("localhost");
+        String defaultIp = SupabaseService.getServerIp();
+        if (defaultIp == null || defaultIp.isEmpty()) {
+            defaultIp = "localhost";
+        }
+        TextField serverIpField = new TextField(defaultIp);
         serverIpField.getStyleClass().add("chat-text-field");
 
         Label emailLabel = new Label("EMAIL");
@@ -119,76 +123,35 @@ public class ChatApplication extends Application {
         emailField.getStyleClass().add("chat-text-field");
         emailField.setPromptText("name@example.com");
 
-        Label passwordLabel = new Label("PASSWORD");
-        passwordLabel.getStyleClass().add("header-label");
-        passwordLabel.setPadding(new Insets(10, 0, 0, 0));
-        PasswordField passwordField = new PasswordField();
-        passwordField.getStyleClass().add("chat-text-field");
-
         Label userLabel = new Label("USERNAME");
         userLabel.getStyleClass().add("header-label");
         userLabel.setPadding(new Insets(10, 0, 0, 0));
         TextField usernameField = new TextField();
         usernameField.getStyleClass().add("chat-text-field");
-        usernameField.setPromptText("Display name");
+        usernameField.setPromptText("Enter display name");
 
         // Primary Button
-        Button actionBtn = new Button("Login");
+        Button actionBtn = new Button("Connect");
         actionBtn.getStyleClass().add("btn-primary");
         actionBtn.setMaxWidth(Double.MAX_VALUE);
         actionBtn.setPadding(new Insets(10));
 
-        // Secondary toggle option
-        Hyperlink toggleLink = new Hyperlink("Need an account? Register");
-        toggleLink.setStyle("-fx-text-fill: #0084FF; -fx-font-size: 13px; -fx-underline: false;");
-
         Label errorLabel = new Label();
         errorLabel.setStyle("-fx-text-fill: #ed4245; -fx-wrap-text: true; -fx-text-alignment: center;");
 
-        // Initial setup for LOGIN mode (username field not initially in fieldsBox)
-        fieldsBox.getChildren().addAll(ipLabel, serverIpField, emailLabel, emailField, passwordLabel, passwordField);
-
-        // Helper to update views based on mode
-        Runnable updateAuthMode = () -> {
-            fieldsBox.getChildren().clear();
-            errorLabel.setText("");
-            if (isRegistering) {
-                title.setText("Create an account");
-                subtitle.setText("Enter your details below to get started!");
-                actionBtn.setText("Sign Up");
-                toggleLink.setText("Already have an account? Login");
-                fieldsBox.getChildren().addAll(ipLabel, serverIpField, emailLabel, emailField, passwordLabel, passwordField, userLabel, usernameField);
-            } else {
-                title.setText("Welcome Back!");
-                subtitle.setText("We're so excited to see you again!");
-                actionBtn.setText("Login");
-                toggleLink.setText("Need an account? Register");
-                fieldsBox.getChildren().addAll(ipLabel, serverIpField, emailLabel, emailField, passwordLabel, passwordField);
-            }
-        };
-
-        toggleLink.setOnAction(e -> {
-            isRegistering = !isRegistering;
-            updateAuthMode.run();
-        });
+        fieldsBox.getChildren().addAll(ipLabel, serverIpField, emailLabel, emailField, userLabel, usernameField);
 
         actionBtn.setOnAction(e -> {
             String ip = serverIpField.getText().trim();
             if (ip.isEmpty()) ip = "localhost";
-            String email = emailField.getText().trim();
-            String password = passwordField.getText();
+            String emailVal = emailField.getText().trim();
             String usernameVal = usernameField.getText().trim();
             
-            if (email.isEmpty()) {
+            if (emailVal.isEmpty()) {
                 errorLabel.setText("Email cannot be empty");
                 return;
             }
-            if (password.isEmpty()) {
-                errorLabel.setText("Password cannot be empty");
-                return;
-            }
-
-            if (isRegistering && usernameVal.isEmpty()) {
+            if (usernameVal.isEmpty()) {
                 errorLabel.setText("Username cannot be empty");
                 return;
             }
@@ -196,66 +159,97 @@ public class ChatApplication extends Application {
             final String finalIp = ip;
 
             actionBtn.setDisable(true);
-            toggleLink.setDisable(true);
-            errorLabel.setText("Authenticating...");
+            errorLabel.setText("Sending verification code via Resend...");
 
             executorService.submit(() -> {
-                if (isRegistering) {
-                    // Sign up first
-                    SupabaseService.AuthResult signUpRes = SupabaseService.signUp(email, password, usernameVal);
-                    if (!signUpRes.success) {
-                        Platform.runLater(() -> {
-                            actionBtn.setDisable(false);
-                            toggleLink.setDisable(false);
-                            errorLabel.setText("Sign Up failed: " + signUpRes.errorMessage);
-                        });
-                        return;
-                    }
-                    // Inform user and let them login
+                // Send OTP via Resend API
+                boolean sent = SupabaseService.sendOtpViaResend(emailVal);
+                if (!sent) {
                     Platform.runLater(() -> {
                         actionBtn.setDisable(false);
-                        toggleLink.setDisable(false);
-                        errorLabel.setText("Signup successful! Logging you in...");
-                    });
-                }
-
-                // Sign in
-                SupabaseService.AuthResult loginRes = SupabaseService.signIn(email, password);
-                if (loginRes.success) {
-                    String username = loginRes.username;
-                    // Connect to TCP server
-                    int audioPort = audioClient.getLocalPort();
-                    boolean tcpSuccess = chatClient.connect(finalIp, username, audioPort);
-                    
-                    Platform.runLater(() -> {
-                        if (tcpSuccess) {
-                            currentUsername = username;
-                            serverIp = finalIp;
-                            
-                            setupCallbacks();
-                            chatClient.startListening();
-                            showMainChatScreen();
+                        String errMsg = SupabaseService.getLastResendError();
+                        if (errMsg != null && !errMsg.isEmpty()) {
+                            errorLabel.setText("Failed to send code: " + errMsg);
                         } else {
-                            actionBtn.setDisable(false);
-                            toggleLink.setDisable(false);
-                            errorLabel.setText("Auth ok, but TCP server rejected username or connection failed.");
+                            errorLabel.setText("Failed to send code. Check Resend config.");
                         }
                     });
-                } else {
+                    return;
+                }
+
+                // Prompt user for OTP on JavaFX thread
+                final boolean[] otpVerified = {false};
+                final String[] enteredOtp = {null};
+                
+                java.util.concurrent.CountDownLatch latch = new java.util.concurrent.CountDownLatch(1);
+                
+                Platform.runLater(() -> {
+                    TextInputDialog dialog = new TextInputDialog();
+                    dialog.setTitle("Email Verification");
+                    dialog.setHeaderText("A verification code was sent to " + emailVal);
+                    dialog.setContentText("Enter 6-digit verification code:");
+                    
+                    try {
+                        dialog.getDialogPane().getStylesheets().add(getClass().getResource("/css/" + currentTheme).toExternalForm());
+                    } catch (Exception ex) {
+                        // ignore
+                    }
+                    dialog.getDialogPane().getStyleClass().add("dialog-pane");
+                    
+                    java.util.Optional<String> result = dialog.showAndWait();
+                    if (result.isPresent()) {
+                        enteredOtp[0] = result.get().trim();
+                        if (SupabaseService.verifyOtp(emailVal, enteredOtp[0])) {
+                            otpVerified[0] = true;
+                        }
+                    }
+                    latch.countDown();
+                });
+                
+                try {
+                    latch.await();
+                } catch (InterruptedException ex) {
+                    ex.printStackTrace();
+                }
+                
+                if (!otpVerified[0]) {
                     Platform.runLater(() -> {
                         actionBtn.setDisable(false);
-                        toggleLink.setDisable(false);
-                        errorLabel.setText("Login failed: " + loginRes.errorMessage);
+                        errorLabel.setText("Verification code incorrect or cancelled.");
                     });
+                    return;
                 }
+
+                Platform.runLater(() -> {
+                    errorLabel.setText("Connecting directly to server...");
+                });
+
+                // Connect directly to TCP server
+                int audioPort = audioClient.getLocalPort();
+                boolean tcpSuccess = chatClient.connect(finalIp, usernameVal, audioPort);
+                
+                Platform.runLater(() -> {
+                    if (tcpSuccess) {
+                        currentUsername = usernameVal;
+                        serverIp = finalIp;
+                        
+                        setupCallbacks();
+                        chatClient.startListening();
+                        showMainChatScreen();
+                    } else {
+                        actionBtn.setDisable(false);
+                        errorLabel.setText("Connection failed. Check server IP or port.");
+                    }
+                });
             });
         });
 
         // Trigger on enter key
-        passwordField.setOnAction(e -> actionBtn.fire());
         usernameField.setOnAction(e -> actionBtn.fire());
+        emailField.setOnAction(e -> actionBtn.fire());
+        serverIpField.setOnAction(e -> actionBtn.fire());
 
-        card.getChildren().addAll(title, subtitle, fieldsBox, actionBtn, toggleLink, errorLabel);
+        card.getChildren().addAll(title, subtitle, fieldsBox, actionBtn, errorLabel);
         root.getChildren().add(card);
         
         // Sleek entry animation
