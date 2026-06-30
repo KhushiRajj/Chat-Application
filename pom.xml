@@ -75,6 +75,10 @@
                         </goals>
                         <configuration>
                             <mainClass>com.chat.server.Server</mainClass>
+                            <!-- Include compiled project classes in the classpath -->
+                            <includeProjectDependencies>true</includeProjectDependencies>
+                            <includePluginDependencies>false</includePluginDependencies>
+                            <classpathScope>compile</classpathScope>
                         </configuration>
                     </execution>
                 </executions>
