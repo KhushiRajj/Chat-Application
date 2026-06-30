@@ -26,12 +26,21 @@ public class ChatClient {
     public boolean connect(String serverIp, String username, int audioPort) {
         try {
             socket = new Socket(serverIp, SERVER_PORT);
+            socket.setSoTimeout(10_000); // 10 second connect timeout
             input = new BufferedReader(new InputStreamReader(socket.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
             output = new PrintWriter(new java.io.OutputStreamWriter(socket.getOutputStream(), java.nio.charset.StandardCharsets.UTF_8), true);
             isConnected = true;
 
+            // ── Handshake: must be first line sent ──
+            output.println("CHAT_HELLO_v1");
+            String ack = input.readLine();
+            if (!"CHAT_HELLO_ACK".equals(ack)) {
+                close();
+                return false;
+            }
+
             // Wait for "Enter your username:"
-            input.readLine(); 
+            input.readLine();
             output.println(username); // send username
 
             // Wait for auth confirmation
@@ -46,7 +55,10 @@ public class ChatClient {
                     break;
                 }
             }
-            
+
+            // Remove the connect-phase timeout; the listener handles keep-alive
+            socket.setSoTimeout(0);
+
             // Register UDP port for audio
             output.println("/udpPort " + audioPort);
 
@@ -56,6 +68,7 @@ public class ChatClient {
             return false;
         }
     }
+
 
     public void startListening() {
         if (isConnected) {
