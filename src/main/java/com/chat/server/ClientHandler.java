@@ -7,7 +7,7 @@ public class ClientHandler implements Runnable {
     // Protocol handshake: client must send this exact token as the first line
     private static final String HANDSHAKE_TOKEN = "CHAT_HELLO_v1";
     // Time (ms) allowed for a client to complete the handshake before being dropped
-    private static final int HANDSHAKE_TIMEOUT_MS = 5000;
+    private static final int HANDSHAKE_TIMEOUT_MS = 15000;
     // Max allowed username length
     private static final int MAX_USERNAME_LEN = 32;
 
