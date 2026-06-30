@@ -1,0 +1,15 @@
+# Build output
+target/
+dist/
+
+# Portable app ZIP (regenerate with build-installer.bat)
+ChatApplication-portable.zip
+
+# IDE / OS files
+.idea/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
